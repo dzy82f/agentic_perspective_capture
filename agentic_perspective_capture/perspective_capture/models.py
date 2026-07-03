@@ -4,14 +4,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-REQUIRED_SECTIONS = [
-    "Core framing",
-    "What immediately draws my attention",
-    "Assumptions I would question",
-    "Primary concern",
-    "What good handling would require",
-]
-
 FORBIDDEN_TOP_LEVEL_KEYS = {"discussion", "synthesis", "handoff", "memory_update", "semantic_graph"}
 
 
@@ -26,12 +18,11 @@ class Persona:
 class PersonaPerspective:
     persona: str
     source_file: str
-    sections: dict[str, str]
+    initial_perspective: str
 
     def validate(self) -> None:
-        missing = [section for section in REQUIRED_SECTIONS if section not in self.sections]
-        if missing:
-            raise ValueError(f"Perspective for {self.persona} is missing sections: {missing}")
+        if not self.initial_perspective.strip():
+            raise ValueError(f"Perspective for {self.persona} is empty")
 
 
 @dataclass(frozen=True)
@@ -54,7 +45,7 @@ class PerspectivePack:
                 {
                     "persona": p.persona,
                     "source_file": p.source_file,
-                    "sections": p.sections,
+                    "initial_perspective": p.initial_perspective,
                 }
                 for p in self.perspectives
             ],
