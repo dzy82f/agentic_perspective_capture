@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .models import PerspectivePack, REQUIRED_SECTIONS
+from .models import PerspectivePack
 
 
 def write_json(pack: PerspectivePack, path: Path) -> None:
@@ -18,11 +18,14 @@ def write_markdown(pack: PerspectivePack, path: Path) -> None:
         "",
         f"**Created:** {pack.created_at}",
         "",
-        "## Perspectives",
+        "## Initial Perspectives",
         "",
     ]
     for perspective in pack.perspectives:
-        lines.extend([f"### {perspective.persona}", ""])
-        for section in REQUIRED_SECTIONS:
-            lines.extend([f"#### {section}", "", perspective.sections.get(section, "").strip(), ""])
+        lines.extend([
+            f"### {perspective.persona}",
+            "",
+            perspective.initial_perspective.strip(),
+            "",
+        ])
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

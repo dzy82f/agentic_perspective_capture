@@ -7,24 +7,19 @@ import pytest
 
 from agentic_perspective_capture.perspective_capture.capture import (
     allocate_question_id,
+    clean_initial_perspective,
     create_perspective_pack,
     run_capture,
     validate_question,
 )
 from agentic_perspective_capture.perspective_capture.loader import EXPECTED_PERSONA_FILES, load_personas
-from agentic_perspective_capture.perspective_capture.models import REQUIRED_SECTIONS
 from agentic_perspective_capture.perspective_capture.serializers import write_json, write_markdown
 from agentic_perspective_capture.runtime.model import RuntimeModel
 
 
 class MockModel(RuntimeModel):
     def complete(self, prompt: str) -> str:
-        return "\n".join(
-            [
-                f"## {section}\nMock content for {section}."
-                for section in REQUIRED_SECTIONS
-            ]
-        )
+        return "This is my short initial position. I am not answering the question; I am stating how I first see it."
 
 
 def make_personas(path: Path) -> Path:
@@ -61,6 +56,7 @@ def test_perspective_pack_creation(tmp_path: Path) -> None:
     pack = create_perspective_pack("What is philosophy?", persona_dir, MockModel(), "Q000001")
     assert pack.question_id == "Q000001"
     assert len(pack.perspectives) == len(EXPECTED_PERSONA_FILES)
+    assert pack.perspectives[0].initial_perspective
 
 
 def test_json_serialisation(tmp_path: Path) -> None:
@@ -70,7 +66,9 @@ def test_json_serialisation(tmp_path: Path) -> None:
     write_json(pack, path)
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["question_id"] == "Q000001"
-    assert data["schema_version"] == "1.0"
+    assert data["schema_version"] == "1.1"
+    assert "initial_perspective" in data["perspectives"][0]
+    assert "sections" not in data["perspectives"][0]
 
 
 def test_markdown_serialisation(tmp_path: Path) -> None:
@@ -80,7 +78,8 @@ def test_markdown_serialisation(tmp_path: Path) -> None:
     write_markdown(pack, path)
     text = path.read_text(encoding="utf-8")
     assert "# Perspective Pack Q000001" in text
-    assert "#### Core framing" in text
+    assert "## Initial Perspectives" in text
+    assert "#### Core framing" not in text
 
 
 def test_automatic_question_id_creation(tmp_path: Path) -> None:
@@ -101,25 +100,35 @@ def test_output_directory_creation(tmp_path: Path) -> None:
 def test_no_discussion_section(tmp_path: Path) -> None:
     persona_dir = make_personas(tmp_path / "personas")
     pack = create_perspective_pack("Question?", persona_dir, MockModel(), "Q000001")
-    data = pack.to_dict()
-    assert "discussion" not in data
+    assert "discussion" not in pack.to_dict()
 
 
 def test_no_synthesis_section(tmp_path: Path) -> None:
     persona_dir = make_personas(tmp_path / "personas")
     pack = create_perspective_pack("Question?", persona_dir, MockModel(), "Q000001")
-    data = pack.to_dict()
-    assert "synthesis" not in data
+    assert "synthesis" not in pack.to_dict()
 
 
 def test_no_handoff_data(tmp_path: Path) -> None:
     persona_dir = make_personas(tmp_path / "personas")
     pack = create_perspective_pack("Question?", persona_dir, MockModel(), "Q000001")
-    data = pack.to_dict()
-    assert "handoff" not in data
+    assert "handoff" not in pack.to_dict()
 
 
 def test_runtime_model_interface_can_be_mocked(tmp_path: Path) -> None:
     persona_dir = make_personas(tmp_path / "personas")
     pack = create_perspective_pack("Question?", persona_dir, MockModel(), "Q000001")
-    assert pack.perspectives[0].sections["Core framing"] == "Mock content for Core framing."
+    assert pack.perspectives[0].initial_perspective.startswith("This is my short initial position")
+
+
+def test_prompt_rejects_fixed_headings(tmp_path: Path) -> None:
+    persona_dir = make_personas(tmp_path / "personas")
+    personas = load_personas(persona_dir)
+    from agentic_perspective_capture.perspective_capture.prompts import build_perspective_prompt
+    prompt = build_perspective_prompt("Question?", personas[0])
+    assert "Do not use fixed headings" in prompt
+    assert "Core framing" not in prompt
+
+
+def test_clean_initial_perspective_removes_heading_noise() -> None:
+    assert clean_initial_perspective("# Perspective\n\nThis is the text.") == "This is the text."

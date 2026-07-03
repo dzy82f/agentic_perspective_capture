@@ -7,7 +7,7 @@ from pathlib import Path
 from agentic_perspective_capture.runtime.model import RuntimeModel
 
 from .loader import load_personas
-from .models import PerspectivePack, PersonaPerspective, REQUIRED_SECTIONS, utc_now_iso
+from .models import PerspectivePack, PersonaPerspective, utc_now_iso
 from .prompts import build_perspective_prompt
 from .serializers import write_json, write_markdown
 
@@ -35,35 +35,17 @@ def allocate_question_id(outputs_dir: Path) -> str:
     return f"Q{next_id:06d}"
 
 
-def parse_markdown_sections(text: str) -> dict[str, str]:
-    sections: dict[str, str] = {}
-    current: str | None = None
-    buffer: list[str] = []
-
-    def flush() -> None:
-        nonlocal buffer, current
-        if current is not None:
-            sections[current] = "\n".join(buffer).strip()
-        buffer = []
-
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        heading = None
-        for section in REQUIRED_SECTIONS:
-            if line in {f"## {section}", f"### {section}", f"#### {section}", section}:
-                heading = section
-                break
-        if heading:
-            flush()
-            current = heading
-        else:
-            if current is not None:
-                buffer.append(raw_line)
-    flush()
-
-    for section in REQUIRED_SECTIONS:
-        sections.setdefault(section, "")
-    return sections
+def clean_initial_perspective(text: str) -> str:
+    """Keep Module 1 output as a short natural position, not a headed report."""
+    lines = []
+    for raw_line in text.strip().splitlines():
+        stripped = raw_line.strip()
+        if stripped.lower() in {"initial perspective", "perspective", "short initial position"}:
+            continue
+        if stripped.startswith("#"):
+            continue
+        lines.append(raw_line.rstrip())
+    return "\n".join(lines).strip()
 
 
 def create_perspective_pack(
@@ -84,13 +66,13 @@ def create_perspective_pack(
         perspective = PersonaPerspective(
             persona=persona.name,
             source_file=persona.filename,
-            sections=parse_markdown_sections(response),
+            initial_perspective=clean_initial_perspective(response),
         )
         perspective.validate()
         perspectives.append(perspective)
 
     return PerspectivePack(
-        schema_version="1.0",
+        schema_version="1.1",
         module="agentic_perspective_capture",
         question_id=question_id,
         question=clean_question,
